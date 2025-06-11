@@ -1,0 +1,19 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: dockerspringbootapp 
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dockerspringbootapp
+  template:
+    metadata:
+      labels:
+        app: dockerspringbootapp 
+    spec:
+      containers:
+        - name: dockerspringbootapp 
+          image: kpkmacr.azurecr.io/dockerspringbootapp
+          ports:
+          - containerPort: 80
