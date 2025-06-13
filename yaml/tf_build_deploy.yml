@@ -1,0 +1,111 @@
+# Deploy to Azure Kubernetes Service
+# Build and push image to Azure Container Registry; Deploy to Azure Kubernetes Service
+# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
+
+trigger:
+- main
+
+resources:
+- repo: self
+
+variables:
+
+  # Container registry service connection established during pipeline creation
+  dockerRegistryServiceConnection: 'f84e48d1-e37c-451e-9746-e0e99b080857'
+  imageRepository: 'springbootapp'
+  containerRegistry: 'kpkmacr.azurecr.io'
+  dockerfilePath: '**/Dockerfile'
+  tag: 'latest'
+  imagePullSecret: 'kpkmacr84db-auth'
+
+  AKS_CLUSTER: 'kpkm-aks-cluster'
+  AKS_RESOURCE_GROUP: 'pkm-13-06'
+  ACR_NAME: 'kpkmacr'
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      name: kp-agent-pool
+    steps:
+    - checkout: self
+    - task: Maven@4
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'clean verify jacoco:report'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        javaHomeOption: 'JDKVersion'
+        mavenVersionOption: 'Default'
+        mavenAuthenticateFeed: false
+        effectivePomSkip: false
+        sonarQubeRunAnalysis: false
+    - task: Docker@2
+      displayName: Build and push image to container registry
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
+        tags: |
+          $(tag)
+    - upload: manifests
+      artifact: manifests
+
+- stage: Deploy
+  displayName: Deploy stage
+  dependsOn: Build
+  jobs:
+  - deployment: DeployToAKS
+    environment: 'TFBuild.default' 
+    displayName: Attach ACR + Deploy to AKS
+    pool:
+      name: 'kp-agent-pool'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          # - task: AzureCLI@2
+          #   name: attachACR
+          #   displayName: Attach ACR to AKS + Get Credentials
+          #   inputs:
+          #     azureSubscription: 'kpservice'
+          #     scriptType: 'bash'
+          #     scriptLocation: 'inlineScript'
+          #     inlineScript: |
+          #       echo "Attaching ACR $(ACR_NAME) to AKS $(AKS_CLUSTER)..."
+          #       az aks update -n $(AKS_CLUSTER) -g $(AKS_RESOURCE_GROUP) --attach-acr $(ACR_NAME)
+
+          #       echo "Fetching kubeconfig credentials for current cluster..."
+          #       az aks get-credentials --name $(AKS_CLUSTER) --resource-group $(AKS_RESOURCE_GROUP) --overwrite-existing
+
+          #       echo "Verifying kubectl context..."
+          #       kubectl config current-context
+          #       kubectl cluster-info
+
+          - task: KubernetesManifest@0
+            displayName: Create imagePullSecret
+            inputs:
+              action: createSecret
+              secretName: $(imagePullSecret)
+              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+
+          - task: KubernetesManifest@0
+            displayName: Deploy to AKS
+            inputs:
+              action: deploy
+              connectionType: 'kubernetesServiceConnection'
+              kubernetesServiceConnection: 'kpkm-aks-cluster-default'
+              namespace: 'default'
+              manifests: |
+                $(Pipeline.Workspace)/manifests/*.yml
+              imagePullSecrets: |
+                $(imagePullSecret)
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(tag)
+
+          
+          

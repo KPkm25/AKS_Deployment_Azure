@@ -1,0 +1,18 @@
+trigger:
+- main
+
+pool:
+  name: kp-agent-pool
+
+steps:
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'kpservice'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+    
+      echo "Running Terraform..."
+      cd $(System.DefaultWorkingDirectory)/terraform  # Adjust if needed
+      terraform init
+      terraform apply -auto-approve

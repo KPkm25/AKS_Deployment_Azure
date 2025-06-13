@@ -1,0 +1,34 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- manual
+
+pool:
+  name: trial_pool
+
+variables:
+  resourceGroupName: 'parakram-11-06'
+  location: 'centralindia'
+
+steps:
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'service-connection-name'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az bicep install
+      
+            echo "Creating resource group..."
+            az group create \
+              --name ${{ variables.resourceGroupName }} \
+              --location ${{ variables.location }}
+      
+            echo "Deploying AKS cluster..."
+            az deployment group create \
+              --resource-group ${{ variables.resourceGroupName }} \
+              --template-file "$(System.DefaultWorkingDirectory)/bicep/aks.bicep" \
+              --parameters clusterName=kpkmcluster dnsPrefix=kpkmdns
